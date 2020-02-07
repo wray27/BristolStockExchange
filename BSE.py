@@ -799,10 +799,7 @@ class Trader_ZIP(Trader):
 # between successive calls, but that does make it inefficient as it has to
 # re-analyse the entire set of traders on each call
 def trade_stats(expid, traders, dumpfile, time, lob):
-        
-        
-        # mid_price = (lob['bids']['best'] + lob['asks']['best']) / 2
-        # micro_price = 
+
 
         trader_types = {}
         n_traders = len(traders)
@@ -1108,6 +1105,33 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
         return [new_pending, cancellations]
 
 
+# calculates the mid and micro price of the market after each time step
+def market_data(exchange, time, data_file):
+    
+    lob = exchange.publish_lob(time, False)
+    mid_price = 0
+    micro_price = 0
+
+    if (lob['bids']['best'] == None):
+        x = 0
+    else:
+        x = lob['bids']['best']
+    
+    if (lob['asks']['best'] == None):
+        y = 0
+    else:
+        y = lob['asks']['best']
+    
+    n_x = lob['bids']['n']
+    n_y = lob['asks']['n']
+
+    mid_price = (x + y) / 2
+    if (n_x + n_y != 0 ): micro_price = ((n_x * y) + (n_y * x)) / (n_x + n_y)
+
+    data_file.write("%f, %d, %d " % (time, mid_price, micro_price))
+    data_file.write('\n')
+
+
 
 # one session in the market
 def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dumpfile, dump_each_trade, verbose):
@@ -1121,6 +1145,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
         # create a bunch of traders
         traders = {}
         trader_stats = populate_market(trader_spec, traders, True, verbose)
+        data_file = open("market_prices.csv", "w+")
 
 
         # timestep set so that can process all traders in one second
@@ -1191,12 +1216,15 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                                 # doesn't alter the LOB, so processing each trader in
                                 # sequence (rather than random/shuffle) isn't a problem
                                 traders[t].respond(time, lob, trade, respond_verbose)
-
+                        
+                
+                market_data(exchange, time, data_file)
                 time = time + timestep
 
 
         # end of an experiment -- dump the tape
         exchange.tape_dump('transactions.csv', 'w', 'keep')
+        data_file.close()
 
 
         # write trade_stats for this experiment NB end-of-session summary only
@@ -1275,9 +1303,10 @@ if __name__ == "__main__":
 
 	# sys.exit('Done Now')
 
-        ## run a single market session for a minute
-        trial_id = 0
-        tdump = open('midprices.csv','w')
+        ## run a single market session for "10 minutes"
+        trial = 1
+        trial_id = 'trial%04d' % trial
+        tdump = open('avg_balance.csv','w')
         dump_all = True
         market_session(trial_id, start_time, end_time,
                        traders_spec, order_sched, tdump, dump_all, True)
