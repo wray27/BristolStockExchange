@@ -211,6 +211,7 @@ class Orderbook(Orderbook_half):
                 self.asks = Orderbook_half('Ask', bse_sys_maxprice)
                 self.tape = []
                 self.quote_id = 0  #unique ID code for each quote accepted onto the book
+                
 
 
 
@@ -354,6 +355,32 @@ class Exchange(Orderbook):
                                      'lob':self.asks.lob_anon}
                 public_data['QID'] = self.quote_id
                 public_data['tape'] = self.tape
+
+                # Some of this logic may have to be moved to the trader, as not necessarily 
+                # exchange logic
+                public_data['mid_price'] = 0
+                public_data['micro_price'] = 0
+                public_data['imbalances'] = 0
+
+                if (public_data['bids']['best'] == None):
+                    x = 0
+                else:
+                    x = public_data['bids']['best']
+                
+                if (public_data['asks']['best'] == None):
+                    y = 0
+                else:
+                    y = public_data['asks']['best']
+                
+                n_x = public_data['bids']['n']
+                n_y = public_data['asks']['n']
+
+                public_data['mid_price'] = (x + y) / 2
+                if (n_x + n_y != 0 ): 
+                    public_data['micro_price'] = ((n_x * y) + (n_y * x)) / (n_x + n_y)
+                    public_data['imbalances'] = (n_x - n_y) / (n_x + n_y)
+
+
                 if verbose:
                         print('publish_lob: t=%d' % time)
                         print('BID_lob=%s' % public_data['bids']['lob'])
@@ -1106,29 +1133,10 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 
 
 # calculates the mid and micro price of the market after each time step
-def market_data(exchange, time, data_file):
+def lob_data_out(exchange, time, data_file):
     
     lob = exchange.publish_lob(time, False)
-    mid_price = 0
-    micro_price = 0
-
-    if (lob['bids']['best'] == None):
-        x = 0
-    else:
-        x = lob['bids']['best']
-    
-    if (lob['asks']['best'] == None):
-        y = 0
-    else:
-        y = lob['asks']['best']
-    
-    n_x = lob['bids']['n']
-    n_y = lob['asks']['n']
-
-    mid_price = (x + y) / 2
-    if (n_x + n_y != 0 ): micro_price = ((n_x * y) + (n_y * x)) / (n_x + n_y)
-
-    data_file.write("%f, %d, %d " % (time, mid_price, micro_price))
+    data_file.write("%f, %d, %d, %f" % (time, lob['mid_price'], lob['micro_price'], lob['imbalances']))
     data_file.write('\n')
 
 
@@ -1145,7 +1153,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
         # create a bunch of traders
         traders = {}
         trader_stats = populate_market(trader_spec, traders, True, verbose)
-        data_file = open("market_prices.csv", "w+")
+        data_file = open("./lob_data.csv", "w+")
 
 
         # timestep set so that can process all traders in one second
@@ -1218,7 +1226,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                                 traders[t].respond(time, lob, trade, respond_verbose)
                         
                 
-                market_data(exchange, time, data_file)
+                lob_data_out(exchange, time, data_file)
                 time = time + timestep
 
 
