@@ -361,6 +361,7 @@ class Exchange(Orderbook):
                 public_data['mid_price'] = 0
                 public_data['micro_price'] = 0
                 public_data['imbalances'] = 0
+                public_data['spread'] = 0
 
                 if (public_data['bids']['best'] == None):
                     x = 0
@@ -375,6 +376,8 @@ class Exchange(Orderbook):
                 n_x = public_data['bids']['n']
                 n_y = public_data['asks']['n']
 
+                
+                public_data['spread'] = y - x
                 public_data['mid_price'] = (x + y) / 2
                 if (n_x + n_y != 0 ): 
                     public_data['micro_price'] = ((n_x * y) + (n_y * x)) / (n_x + n_y)
@@ -1136,7 +1139,24 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 def lob_data_out(exchange, time, data_file):
     
     lob = exchange.publish_lob(time, False)
-    data_file.write("%f, %d, %d, %f" % (time, lob['mid_price'], lob['micro_price'], lob['imbalances']))
+    
+    try:
+        transaction_price = lob['tape'][-1]['price']
+    except:
+        transaction_price = 0   
+ 
+    
+    if (lob['bids']['best'] == None):
+        x = 0
+    else:
+        x = lob['bids']['best']
+    
+    if (lob['asks']['best'] == None):
+        y = 0
+    else:
+        y = lob['asks']['best']
+
+    data_file.write("%f, %d, %d, %f, %d, %d, %d, %d" % (time, lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x, y, transaction_price))
     data_file.write('\n')
 
 
@@ -1153,7 +1173,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
         # create a bunch of traders
         traders = {}
         trader_stats = populate_market(trader_spec, traders, True, verbose)
-        data_file = open("./lob_data.csv", "w+")
+        data_file = open("./Data/" + sess_id + ".csv", "w+")
 
 
         # timestep set so that can process all traders in one second
@@ -1312,12 +1332,13 @@ if __name__ == "__main__":
 	# sys.exit('Done Now')
 
         ## run a single market session for "10 minutes"
-        trial = 1
-        trial_id = 'trial%04d' % trial
-        tdump = open('avg_balance.csv','w')
-        dump_all = True
-        market_session(trial_id, start_time, end_time,
-                       traders_spec, order_sched, tdump, dump_all, True)
+        for i in range(10):
+                trial = i + 1
+                trial_id = 'trial%04d' % trial
+                tdump = open('avg_balance.csv','w')
+                dump_all = True
+                market_session(trial_id, start_time, end_time,
+                        traders_spec, order_sched, tdump, dump_all, True)
 	sys.exit('Done Now')
 
 	# run a sequence of trials that exhaustively varies the ratio of four trader types
