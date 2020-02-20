@@ -377,7 +377,7 @@ class Exchange(Orderbook):
                 n_y = public_data['asks']['n']
 
                 
-                public_data['spread'] = y - x
+                public_data['spread'] = abs(y - x)
                 public_data['mid_price'] = (x + y) / 2
                 if (n_x + n_y != 0 ): 
                     public_data['micro_price'] = ((n_x * y) + (n_y * x)) / (n_x + n_y)
