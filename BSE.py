@@ -361,7 +361,16 @@ class Exchange(Orderbook):
                 public_data['mid_price'] = 0
                 public_data['micro_price'] = 0
                 public_data['imbalances'] = 0
+                public_data['recent_transaction'] = 0
                 public_data['spread'] = 0
+                
+                # Finds the most recent transaction price
+                if len(public_data['tape'] ) != 0 : 
+                    for t in reversed(public_data['tape']):
+                        
+                        if t['type'] == 'Trade':
+                            public_data['recent_transaction'] = t['price']
+                            break
 
                 if (public_data['bids']['best'] == None):
                     x = 0
@@ -1139,11 +1148,10 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 def lob_data_out(exchange, time, data_file):
     
     lob = exchange.publish_lob(time, False)
+   
     
-    try:
-        transaction_price = lob['tape'][-1]['price']
-    except:
-        transaction_price = 0   
+    
+
  
     
     if (lob['bids']['best'] == None):
@@ -1156,7 +1164,7 @@ def lob_data_out(exchange, time, data_file):
     else:
         y = lob['asks']['best']
 
-    data_file.write("%f, %d, %d, %f, %d, %d, %d, %d" % (time, lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x, y, transaction_price))
+    data_file.write("%f, %d, %d, %f, %d, %d, %d, %d" % (time, lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x, y, lob['recent_transaction']))
     data_file.write('\n')
 
 
