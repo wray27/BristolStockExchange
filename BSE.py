@@ -48,6 +48,7 @@
 import sys
 import math
 import random
+from DeepTrader import DeepTrader
 
 
 bse_sys_minprice = 1  # minimum price in the system, in cents/pennies
@@ -363,14 +364,35 @@ class Exchange(Orderbook):
                 public_data['imbalances'] = 0
                 public_data['recent_transaction'] = 0
                 public_data['spread'] = 0
+                public_data['transact'] = 0
+                public_data['delta_t'] = 0
+                public_data['weighted_moving_average'] = 0
                 
                 # Finds the most recent transaction price
-                if len(public_data['tape'] ) != 0 : 
-                    for t in reversed(public_data['tape']):
-                        
-                        if t['type'] == 'Trade':
-                            public_data['recent_transaction'] = t['price']
-                            break
+                if len(public_data['tape'] ) != 0: 
+                    
+                    tape = reversed(public_data['tape'])
+                    trades = list(filter(lambda d: d['type'] == "Trade", tape))
+                    trade_prices = [t['price'] for t in trades]
+                    
+                
+                    public_data['recent_transaction'] = trades[0]['price']
+                    public_data['delta_t'] = public_data['time'] - trades[0]['time']
+                    
+                    if (public_data['time'] == trades[0]['time']):
+                        public_data['transact'] = 1
+                        trade_prices = trade_prices[1:]
+                        if len(trades) == 1:
+                            public_data['delta_t'] = trades[0]['time'] - 0
+                        else:
+                            public_data['delta_t'] = trades[0]['time'] - trades[1]['time']             
+                    
+                    if len(trade_prices) != 0:
+                        weights = [(10/9)*(pow(0.9, i)) for i in range( len(trade_prices))]
+                        public_data['weighted_moving_average'] = sum([a * b for a, b in zip(trade_prices, weights)]) / len(trade_prices)
+                    
+                else:
+                    public_data['delta_t'] = public_data['time']
 
                 if (public_data['bids']['best'] == None):
                     x = 0
@@ -889,6 +911,8 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                         return Trader_Sniper('SNPR', name, 0.00, 0)
                 elif robottype == 'ZIP':
                         return Trader_ZIP('ZIP', name, 0.00, 0)
+                elif robottype == 'DTR':
+                    return DeepTrader('DTR',"./Models/multivariate_network", name, 0.00, 0)
                 else:
                         sys.exit('FATAL: don\'t know robot type %s\n' % robottype)
 
@@ -1148,12 +1172,7 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 def lob_data_out(exchange, time, data_file):
     
     lob = exchange.publish_lob(time, False)
-   
-    
-    
 
- 
-    
     if (lob['bids']['best'] == None):
         x = 0
     else:
@@ -1164,7 +1183,8 @@ def lob_data_out(exchange, time, data_file):
     else:
         y = lob['asks']['best']
 
-    data_file.write("%f, %d, %d, %f, %d, %d, %d, %d" % (time, lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x, y, lob['recent_transaction']))
+    data_file.write("%f, %d, %d, %f, %d, %d, %d, %d, %d, %f, %f" % (
+        time, lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x, y, lob['recent_transaction'], lob['transact'], lob["delta_t"], lob["weighted_moving_average"]))
     data_file.write('\n')
 
 
@@ -1254,7 +1274,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                                 traders[t].respond(time, lob, trade, respond_verbose)
                         
                 
-                lob_data_out(exchange, time, data_file)
+                # lob_data_out(exchange, time, data_file)
                 time = time + timestep
 
 
@@ -1315,7 +1335,7 @@ if __name__ == "__main__":
 	order_sched = {'sup':supply_schedule, 'dem':demand_schedule,
 					'interval':30, 'timemode':'drip-poisson'}
 
-	buyers_spec = [('GVWY',10),('SHVR',10),('ZIC',10),('ZIP',10)]
+	buyers_spec = [('GVWY',10),('SHVR',10),('ZIC',10),('DTR',10)]
 	sellers_spec = buyers_spec
 	traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
 # #
@@ -1342,8 +1362,8 @@ if __name__ == "__main__":
         ## run a single market session for "10 minutes"
         for i in range(10):
                 trial = i + 1
-                trial_id = 'trial%04d' % trial
-                tdump = open('avg_balance.csv','w')
+                trial_id = './Data/trial%04d' % trial
+                tdump = open('avg_balance%04d.csv' % trial,'w')
                 dump_all = True
                 market_session(trial_id, start_time, end_time,
                         traders_spec, order_sched, tdump, dump_all, True)
