@@ -45,10 +45,16 @@
 
 # could import pylab here for graphing etc
 
-import sys
+import os,sys,inspect
 import math
 import random
+
+# adds parent directory to the sys path variable to import DeepTrader
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0,parentdir) 
 from DeepTrader import DeepTrader
+
 
 
 bse_sys_minprice = 1  # minimum price in the system, in cents/pennies
