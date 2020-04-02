@@ -3,3 +3,4 @@ avg_balance.csv
 transactions.csv
 15_balances_withZIP_M1_periodic.csv avg_balance.csv balances_004.csv midprices.csv transactions.csv
 *.csv
+*.pyc

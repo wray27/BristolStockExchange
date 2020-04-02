@@ -54,6 +54,7 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir) 
 from DeepTrader import DeepTrader
+from Trader import Trader
 
 
 
@@ -436,88 +437,6 @@ class Exchange(Orderbook):
 
 
 ##################--Traders below here--#############
-
-
-# Trader superclass
-# all Traders have a trader id, bank balance, blotter, and list of orders to execute
-class Trader:
-
-        def __init__(self, ttype, tid, balance, time):
-                self.ttype = ttype      # what type / strategy this trader is
-                self.tid = tid          # trader unique ID code
-                self.balance = balance  # money in the bank
-                self.blotter = []       # record of trades executed
-                self.orders = []        # customer orders currently being worked (fixed at 1)
-                self.n_quotes = 0       # number of quotes live on LOB
-                self.willing = 1        # used in ZIP etc
-                self.able = 1           # used in ZIP etc
-                self.birthtime = time   # used when calculating age of a trader/strategy
-                self.profitpertime = 0  # profit per unit time
-                self.n_trades = 0       # how many trades has this trader done?
-                self.lastquote = None   # record of what its last quote was
-
-
-        def __str__(self):
-                return '[TID %s type %s balance %s blotter %s orders %s n_trades %s profitpertime %s]' \
-                       % (self.tid, self.ttype, self.balance, self.blotter, self.orders, self.n_trades, self.profitpertime)
-
-
-        def add_order(self, order, verbose):
-                # in this version, trader has at most one order,
-                # if allow more than one, this needs to be self.orders.append(order)
-                if self.n_quotes > 0 :
-                    # this trader has a live quote on the LOB, from a previous customer order
-                    # need response to signal cancellation/withdrawal of that quote
-                    response = 'LOB_Cancel'
-                else:
-                    response = 'Proceed'
-                self.orders = [order]
-                if verbose : print('add_order < response=%s' % response)
-                return response
-
-
-        def del_order(self, order):
-                # this is lazy: assumes each trader has only one customer order with quantity=1, so deleting sole order
-                # CHANGE TO DELETE THE HEAD OF THE LIST AND KEEP THE TAIL
-                self.orders = []
-
-
-        def bookkeep(self, trade, order, verbose, time):
-
-                outstr=""
-                for order in self.orders: outstr = outstr + str(order)
-
-                self.blotter.append(trade)  # add trade record to trader's blotter
-                # NB What follows is **LAZY** -- assumes all orders are quantity=1
-                transactionprice = trade['price']
-                if self.orders[0].otype == 'Bid':
-                        profit = self.orders[0].price - transactionprice
-                else:
-                        profit = transactionprice - self.orders[0].price
-                self.balance += profit
-                self.n_trades += 1
-                self.profitpertime = self.balance/(time - self.birthtime)
-
-                if profit < 0 :
-                        print profit
-                        print trade
-                        print order
-                        sys.exit()
-
-                if verbose: print('%s profit=%d balance=%d profit/time=%d' % (outstr, profit, self.balance, self.profitpertime))
-                self.del_order(order)  # delete the order
-
-
-        # specify how trader responds to events in the market
-        # this is a null action, expect it to be overloaded by specific algos
-        def respond(self, time, lob, trade, verbose):
-                return None
-
-        # specify how trader mutates its parameter values
-        # this is a null action, expect it to be overloaded by specific algos
-        def mutate(self, time, lob, trade, verbose):
-                return None
-
 
 
 # Trader subclass Giveaway
@@ -918,7 +837,7 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                 elif robottype == 'ZIP':
                         return Trader_ZIP('ZIP', name, 0.00, 0)
                 elif robottype == 'DTR':
-                    return DeepTrader('DTR',"./Models/multivariate_network", name, 0.00, 0)
+                    return DeepTrader('DTR', name, 0.00, 0, 'multivariate_network')
                 else:
                         sys.exit('FATAL: don\'t know robot type %s\n' % robottype)
 
@@ -1207,7 +1126,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
         # create a bunch of traders
         traders = {}
         trader_stats = populate_market(trader_spec, traders, True, verbose)
-        data_file = open("./Data/" + sess_id + ".csv", "w+")
+        # data_file = open("./Data/" + sess_id + ".csv", "w+")
 
 
         # timestep set so that can process all traders in one second
@@ -1259,8 +1178,15 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                 # if verbose: print('Trader Quote: %s' % (order))
 
                 if order != None:
-                        if order.otype == 'Ask' and order.price < traders[tid].orders[0].price: sys.exit('Bad ask')
-                        if order.otype == 'Bid' and order.price > traders[tid].orders[0].price: sys.exit('Bad bid')
+                        if order.otype == 'Ask' and order.price < traders[tid].orders[0].price: 
+                                print "1) " + str(order.price)
+                                print "2) " + str(traders[tid].orders[0].price)
+                                sys.exit('Bad ask')
+                        if order.otype == 'Bid' and order.price > traders[tid].orders[0].price: 
+                                print order.price
+                                print traders[tid].orders[0].price
+                                sys.exit('Bad bid')
+
                         # send order to exchange
                         traders[tid].n_quotes = 1
                         trade = exchange.process_order2(time, order, process_verbose)
@@ -1285,8 +1211,8 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
 
 
         # end of an experiment -- dump the tape
-        exchange.tape_dump('transactions.csv', 'w', 'keep')
-        data_file.close()
+        # exchange.tape_dump('transactions.csv', 'w', 'keep')
+        # data_file.close()
 
 
         # write trade_stats for this experiment NB end-of-session summary only
@@ -1368,7 +1294,7 @@ if __name__ == "__main__":
         ## run a single market session for "10 minutes"
         for i in range(10):
                 trial = i + 1
-                trial_id = './Data/trial%04d' % trial
+                trial_id = 'trial%04d' % trial
                 tdump = open('avg_balance%04d.csv' % trial,'w')
                 dump_all = True
                 market_session(trial_id, start_time, end_time,
