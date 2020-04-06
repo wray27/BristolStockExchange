@@ -350,7 +350,7 @@ class Exchange(Orderbook):
 
         # this returns the LOB data "published" by the exchange,
         # i.e., what is accessible to the traders
-        def publish_lob(self, time, verbose):
+        def publish_lob(self, time, verbose, traders):
                 public_data = {}
                 public_data['time'] = time
                 public_data['bids'] = {'best':self.bids.best_price,
@@ -363,7 +363,7 @@ class Exchange(Orderbook):
                                      'lob':self.asks.lob_anon}
                 public_data['QID'] = self.quote_id
                 public_data['tape'] = self.tape
-
+               
                 # Some of this logic may have to be moved to the trader, as not necessarily 
                 # exchange logic
                 public_data['mid_price'] = 0
@@ -371,55 +371,53 @@ class Exchange(Orderbook):
                 public_data['imbalances'] = 0
                 public_data['recent_transaction'] = 0
                 public_data['spread'] = 0
-                public_data['transact'] = 0
-                public_data['delta_t'] = 0
-                public_data['weighted_moving_average'] = 0
+                public_data['trade_time'] = 0
+                public_data['trade_price'] = 0 
+
                 
                 # Finds the most recent transaction price
                 if len(public_data['tape'] ) != 0: 
                     
                     tape = reversed(public_data['tape'])
                     trades = list(filter(lambda d: d['type'] == "Trade", tape))
-                    trade_prices = [t['price'] for t in trades]
                     
-                
-                    public_data['recent_transaction'] = trades[0]['price']
-                    public_data['delta_t'] = public_data['time'] - trades[0]['time']
-                    
+
                     if (public_data['time'] == trades[0]['time']):
-                        public_data['transact'] = 1
-                        trade_prices = trade_prices[1:]
-                        if len(trades) == 1:
-                            public_data['delta_t'] = trades[0]['time'] - 0
+                            
+                        buyer = ""
+                        seller = ""
+                        if(trades[0]['party2'][0] == 'B'):
+                            buyer = trades[0]['party2']
+                            seller = trades[0]['party1']
                         else:
-                            public_data['delta_t'] = trades[0]['time'] - trades[1]['time']             
-                    
-                    if len(trade_prices) != 0:
-                        weights = [(10/9)*(pow(0.9, i)) for i in range( len(trade_prices))]
-                        public_data['weighted_moving_average'] = sum([a * b for a, b in zip(trade_prices, weights)]) / len(trade_prices)
-                    
-                else:
-                    public_data['delta_t'] = public_data['time']
+                            buyer = trades[0]['party1']
+                            seller = trades[0]['party2']
 
-                if (public_data['bids']['best'] == None):
-                    x = 0
-                else:
-                    x = public_data['bids']['best']
-                
-                if (public_data['asks']['best'] == None):
-                    y = 0
-                else:
-                    y = public_data['asks']['best']
-                
-                n_x = public_data['bids']['n']
-                n_y = public_data['asks']['n']
+                        public_data['trade_time'] = public_data['time']
+                        public_data['trade_price'] = trades[0]['price']
+                        
+                       
+                        
 
-                
-                public_data['spread'] = abs(y - x)
-                public_data['mid_price'] = (x + y) / 2
-                if (n_x + n_y != 0 ): 
-                    public_data['micro_price'] = ((n_x * y) + (n_y * x)) / (n_x + n_y)
-                    public_data['imbalances'] = (n_x - n_y) / (n_x + n_y)
+                        if (public_data['bids']['best'] == None):
+                            x = 0
+                        else:
+                            x = public_data['bids']['best']
+                        
+                        if (public_data['asks']['best'] == None):
+                            y = 0
+                        else:
+                            y = public_data['asks']['best']
+                        
+                        n_x = public_data['bids']['n']
+                        n_y = public_data['asks']['n']
+
+                        
+                        public_data['spread'] = abs(y - x)
+                        public_data['mid_price'] = (x + y) / 2
+                        if (n_x + n_y != 0 ): 
+                            public_data['micro_price'] = ((n_x * y) + (n_y * x)) / (n_x + n_y)
+                            public_data['imbalances'] = (n_x - n_y) / (n_x + n_y)
 
 
                 if verbose:
@@ -1094,9 +1092,9 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 
 
 # calculates the mid and micro price of the market after each time step
-def lob_data_out(exchange, time, data_file):
-    
-    lob = exchange.publish_lob(time, False)
+def lob_data_out(exchange, time, data_file, traders, limits):
+    t = 0 
+    lob = exchange.publish_lob(time, False, traders)
 
     if (lob['bids']['best'] == None):
         x = 0
@@ -1107,11 +1105,21 @@ def lob_data_out(exchange, time, data_file):
         y = 0
     else:
         y = lob['asks']['best']
+    # print lob
 
-    data_file.write("%f, %d, %d, %f, %d, %d, %d, %d, %d, %f, %f" % (
-        time, lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x, y, lob['recent_transaction'], lob['transact'], lob["delta_t"], lob["weighted_moving_average"]))
-    data_file.write('\n')
+    if limits[0] == 0: t = 1
+    
 
+    if(time == lob["trade_time"] and time != 0):
+        try:
+
+            data_file.write("%d,%d,%d, %f,%f,%d,%d,%d,%d,%d\n" % (time, t, limits[t], lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x,y, lob['trade_price']))
+
+        
+        except :
+            
+            print lob  
+            print limits 
 
 
 # one session in the market
@@ -1126,7 +1134,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
         # create a bunch of traders
         traders = {}
         trader_stats = populate_market(trader_spec, traders, True, verbose)
-        # data_file = open("./Data/" + sess_id + ".csv", "w+")
+        data_file = open("./Data/" + sess_id + ".csv", "w+")
 
 
         # timestep set so that can process all traders in one second
@@ -1138,7 +1146,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
         last_update = -1.0
 
         time = starttime
-
+       
         orders_verbose = False
         lob_verbose = False
         process_verbose = False
@@ -1173,18 +1181,17 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
 
                 # get a limit-order quote (or None) from a randomly chosen trader
                 tid = list(traders.keys())[random.randint(0, len(traders) - 1)]
-                order = traders[tid].getorder(time, time_left, exchange.publish_lob(time, lob_verbose))
+                order = traders[tid].getorder(time, time_left, exchange.publish_lob(time, lob_verbose, traders))
 
                 # if verbose: print('Trader Quote: %s' % (order))
-
+                limits = [0, 0]
                 if order != None:
-                        if order.otype == 'Ask' and order.price < traders[tid].orders[0].price: 
-                                print "1) " + str(order.price)
-                                print "2) " + str(traders[tid].orders[0].price)
+                        if order.otype == 'Bid': limits[0] = traders[tid].orders[0].price
+                        if order.otype == 'Ask': limits[1] = traders[tid].orders[0].price
+                        # print limits
+                        if order.otype == 'Ask' and order.price < traders[tid].orders[0].price:
                                 sys.exit('Bad ask')
                         if order.otype == 'Bid' and order.price > traders[tid].orders[0].price: 
-                                print order.price
-                                print traders[tid].orders[0].price
                                 sys.exit('Bad bid')
 
                         # send order to exchange
@@ -1195,10 +1202,11 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                                 # so the counterparties update order lists and blotters
                                 traders[trade['party1']].bookkeep(trade, order, bookkeep_verbose, time)
                                 traders[trade['party2']].bookkeep(trade, order, bookkeep_verbose, time)
-                                if dump_each_trade: trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose))
-
+                                if dump_each_trade: trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose, traders))
+                                lob_data_out(exchange, time,
+                                             data_file, traders, limits)
                         # traders respond to whatever happened
-                        lob = exchange.publish_lob(time, lob_verbose)
+                        lob = exchange.publish_lob(time, lob_verbose , traders)
                         for t in traders:
                                 # NB respond just updates trader's internal variables
                                 # doesn't alter the LOB, so processing each trader in
@@ -1206,17 +1214,16 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                                 traders[t].respond(time, lob, trade, respond_verbose)
                         
                 
-                # lob_data_out(exchange, time, data_file)
                 time = time + timestep
 
 
         # end of an experiment -- dump the tape
         # exchange.tape_dump('transactions.csv', 'w', 'keep')
-        # data_file.close()
+        data_file.close()
 
 
         # write trade_stats for this experiment NB end-of-session summary only
-        trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose))
+        trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose, traders))
 
 
 
@@ -1267,7 +1274,7 @@ if __name__ == "__main__":
 	order_sched = {'sup':supply_schedule, 'dem':demand_schedule,
 					'interval':30, 'timemode':'drip-poisson'}
 
-	buyers_spec = [('GVWY',10),('SHVR',10),('ZIC',10),('DTR',10)]
+	buyers_spec = [('GVWY',10),('SHVR',10),('ZIC',10),('ZIP',10)]
 	sellers_spec = buyers_spec
 	traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
 # #
