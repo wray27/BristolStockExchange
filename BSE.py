@@ -1106,20 +1106,18 @@ def lob_data_out(exchange, time, data_file, traders, limits):
     else:
         y = lob['asks']['best']
     # print lob
-
-    if limits[0] == 0: t = 1
-    
+    if limits[0] == 0: t=1
 
     if(time == lob["trade_time"] and time != 0):
-        try:
+        # try:
 
-            data_file.write("%d,%d,%d, %f,%f,%d,%d,%d,%d,%d\n" % (time, t, limits[t], lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x,y, lob['trade_price']))
+        data_file.write("%f,%d,%d, %f,%f,%d,%d,%d,%d,%d\n" % (time,t, limits[t], lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x,y, lob['trade_price']))
 
         
-        except :
+        # except :
             
-            print lob  
-            print limits 
+        #     print lob  
+        #     print limits 
 
 
 # one session in the market
@@ -1134,7 +1132,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
         # create a bunch of traders
         traders = {}
         trader_stats = populate_market(trader_spec, traders, True, verbose)
-        data_file = open("./Data/" + sess_id + ".csv", "w+")
+        data_file = open("./Data/Training/" + sess_id + ".csv", "w+")
 
 
         # timestep set so that can process all traders in one second
@@ -1302,7 +1300,7 @@ if __name__ == "__main__":
         for i in range(10):
                 trial = i + 1
                 trial_id = 'trial%04d' % trial
-                tdump = open('avg_balance%04d.csv' % trial,'w')
+                tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
                 dump_all = True
                 market_session(trial_id, start_time, end_time,
                         traders_spec, order_sched, tdump, dump_all, True)
