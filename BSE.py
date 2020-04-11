@@ -48,12 +48,15 @@
 import os,sys,inspect
 import math
 import random
+from snashall2019 import Trader_AA
+from snashall2019 import Trader_GDX
 
 # adds parent directory to the sys path variable to import DeepTrader
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir) 
 from DeepTrader import DeepTrader
+
 from Trader import Trader
 
 
@@ -78,7 +81,6 @@ class Order:
         def __str__(self):
                 return '[%s %s P=%03d Q=%s T=%5.2f QID:%d]' % \
                        (self.tid, self.otype, self.price, self.qty, self.time, self.qid)
-
 
 
 # Orderbook_half is one side of the book: a list of bids or a list of asks, each sorted best-first
@@ -208,8 +210,6 @@ class Orderbook_half:
                 self.build_lob()
                 return best_price_counterparty
 
-
-
 # Orderbook for a single instrument: list of bids and list of asks
 
 class Orderbook(Orderbook_half):
@@ -220,8 +220,6 @@ class Orderbook(Orderbook_half):
                 self.tape = []
                 self.quote_id = 0  #unique ID code for each quote accepted onto the book
                 
-
-
 
 # Exchange's internal orderbook
 
@@ -431,9 +429,6 @@ class Exchange(Orderbook):
 
 
 
-
-
-
 ##################--Traders below here--#############
 
 
@@ -454,8 +449,6 @@ class Trader_Giveaway(Trader):
                                     time, lob['QID'])
                         self.lastquote=order
                 return order
-
-
 
 # Trader subclass ZI-C
 # After Gode & Sunder 1993
@@ -479,7 +472,6 @@ class Trader_ZIC(Trader):
                         order = Order(self.tid, otype, quoteprice, self.orders[0].qty, time, qid)
                         self.lastquote = order
                 return order
-
 
 # Trader subclass Shaver
 # shaves a penny off the best price
@@ -509,7 +501,6 @@ class Trader_Shaver(Trader):
                         order = Order(self.tid, otype, quoteprice, self.orders[0].qty, time, lob['QID'])
                         self.lastquote = order
                 return order
-
 
 # Trader subclass Sniper
 # Based on Shaver,
@@ -544,9 +535,6 @@ class Trader_Sniper(Trader):
                         order = Order(self.tid, otype, quoteprice, self.orders[0].qty, time, lob['QID'])
                         self.lastquote = order
                 return order
-
-
-
 
 # Trader subclass ZIP
 # After Cliff 1997
@@ -798,7 +786,7 @@ def trade_stats(expid, traders, dumpfile, time, lob):
                 trader_types[ttype] = {'n':n, 'balance_sum':t_balance}
 
 
-        dumpfile.write('%s, %06d, ' % (expid, time))
+        dumpfile.write('%s, %f, ' % (expid, time))
         for ttype in sorted(list(trader_types.keys())):
                 n = trader_types[ttype]['n']
                 s = trader_types[ttype]['balance_sum']
@@ -807,14 +795,12 @@ def trade_stats(expid, traders, dumpfile, time, lob):
         if lob['bids']['best'] != None :
                 dumpfile.write('%d, ' % (lob['bids']['best']))
         else:
-                dumpfile.write('N, ')
+                dumpfile.write('NaN, ')
         if lob['asks']['best'] != None :
                 dumpfile.write('%d, ' % (lob['asks']['best']))
         else:
-                dumpfile.write('N, ')
+                dumpfile.write('NaN, ')
         dumpfile.write('\n');
-
-
 
 
 
@@ -835,7 +821,11 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                 elif robottype == 'ZIP':
                         return Trader_ZIP('ZIP', name, 0.00, 0)
                 elif robottype == 'DTR':
-                    return DeepTrader('DTR', name, 0.00, 0, 'multivariate_network')
+                    return DeepTrader('DTR', name, 0.00, 0, 'DeepTrader1_3')
+                elif robottype == 'AA':
+                    return Trader_AA('AA', name, 0.00, 0)
+                elif robottype == 'GDX':
+                    return Trader_GDX('GDX', name, 0.00, 0)
                 else:
                         sys.exit('FATAL: don\'t know robot type %s\n' % robottype)
 
@@ -1090,7 +1080,6 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
                                 new_pending.append(order)
         return [new_pending, cancellations]
 
-
 # calculates the mid and micro price of the market after each time step
 def lob_data_out(exchange, time, data_file, traders, limits):
     t = 0 
@@ -1118,7 +1107,6 @@ def lob_data_out(exchange, time, data_file, traders, limits):
             
         #     print lob  
         #     print limits 
-
 
 # one session in the market
 def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dumpfile, dump_each_trade, verbose):
@@ -1188,8 +1176,12 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                         if order.otype == 'Ask': limits[1] = traders[tid].orders[0].price
                         # print limits
                         if order.otype == 'Ask' and order.price < traders[tid].orders[0].price:
+                                print order.price
+                                print traders[tid].orders[0].price
                                 sys.exit('Bad ask')
                         if order.otype == 'Bid' and order.price > traders[tid].orders[0].price: 
+                                print order.price
+                                print traders[tid].orders[0].price
                                 sys.exit('Bad bid')
 
                         # send order to exchange
@@ -1201,8 +1193,8 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                                 traders[trade['party1']].bookkeep(trade, order, bookkeep_verbose, time)
                                 traders[trade['party2']].bookkeep(trade, order, bookkeep_verbose, time)
                                 if dump_each_trade: trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose, traders))
-                                lob_data_out(exchange, time,
-                                             data_file, traders, limits)
+                                lob_data_out(exchange, time, data_file, traders, limits)
+                        
                         # traders respond to whatever happened
                         lob = exchange.publish_lob(time, lob_verbose , traders)
                         for t in traders:
@@ -1221,7 +1213,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
 
 
         # write trade_stats for this experiment NB end-of-session summary only
-        trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose, traders))
+        # trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose, traders))
 
 
 
@@ -1272,7 +1264,7 @@ if __name__ == "__main__":
 	order_sched = {'sup':supply_schedule, 'dem':demand_schedule,
 					'interval':30, 'timemode':'drip-poisson'}
 
-	buyers_spec = [('GVWY',10),('SHVR',10),('ZIC',10),('ZIP',10)]
+	buyers_spec = [('DTR',10),('ZIC',10),('SNPR',10),('GVWY',10)]
 	sellers_spec = buyers_spec
 	traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
 # #
@@ -1297,22 +1289,22 @@ if __name__ == "__main__":
 	# sys.exit('Done Now')
 
         ## run a single market session for "10 minutes"
-        for i in range(10):
-                trial = i + 1
-                trial_id = 'trial%04d' % trial
-                tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
-                dump_all = True
-                market_session(trial_id, start_time, end_time,
-                        traders_spec, order_sched, tdump, dump_all, True)
-	sys.exit('Done Now')
+        # for i in range(10):
+        #         trial = i + 1
+        #         trial_id = 'trial%04d' % trial
+        #         tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
+        #         dump_all = False
+        #         market_session(trial_id, start_time, end_time,
+        #                 traders_spec, order_sched, tdump, dump_all, True)
+	# sys.exit('Done Now')
 
 	# run a sequence of trials that exhaustively varies the ratio of four trader types
 	# NB this has weakness of symmetric proportions on buyers/sellers -- combinatorics of varying that are quite nasty
 	
 
-	# n_trader_types = 4
+	# n_trader_types = 7
 	# equal_ratio_n = 4
-	# n_trials_per_ratio = 50
+	# n_trials_per_ratio = 20
 
 	# n_traders = n_trader_types * equal_ratio_n
 
@@ -1341,7 +1333,7 @@ if __name__ == "__main__":
 	# 										trial_id = 'trial%07d' % trialnumber
 	# 										market_session(trial_id, start_time, end_time, traders_spec,
 	# 														order_sched, tdump, False, True)
-	# 										tdump.flush()
+	# 										# tdump.flush()
 	# 										trial = trial + 1
 	# 										trialnumber = trialnumber + 1
 	# 						trdr_3_n += 1
