@@ -1341,7 +1341,7 @@ class Trader_GDX(Trader):
 
                 #populate expected values
                 if self.first_turn:
-                        print "populating"
+                        # print "populating"
                         self.first_turn = False
                         for n in range(1, self.remaining_offer_ops):
                                 for m in range(1, self.holdings):
@@ -1352,7 +1352,7 @@ class Trader_GDX(Trader):
                                             if self.job == 'Ask':
                                                     #BUYER
                                                     self.values[m][n] = self.calc_p_ask(m, n)
-                        print "done"
+                        # print "done"
 
 
                 deal = bid_hit or ask_lifted

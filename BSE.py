@@ -1,3 +1,4 @@
+from __future__ import division
 # -*- coding: utf-8 -*-
 #
 # BSE: The Bristol Stock Exchange
@@ -48,15 +49,17 @@
 import os,sys,inspect
 import math
 import random
+from progress.bar import IncrementalBar as Bar
 from snashall2019 import Trader_AA
 from snashall2019 import Trader_GDX
+from itertools import combinations, permutations, product
+
 
 # adds parent directory to the sys path variable to import DeepTrader
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir) 
 from DeepTrader import DeepTrader
-
 from Trader import Trader
 
 
@@ -243,7 +246,6 @@ class Exchange(Orderbook):
                         self.asks.best_tid = self.asks.lob[best_price][1][0][2]
                 return [order.qid, response]
 
-
         def del_order(self, time, order, verbose):
                 # delete a trader's quot/order from the exchange, update all internal records
                 tid = order.tid
@@ -273,8 +275,6 @@ class Exchange(Orderbook):
                 else:
                         # neither bid nor ask?
                         sys.exit('bad order type in del_quote()')
-
-
 
         def process_order2(self, time, order, verbose):
                 # receive an order and either add it to the relevant LOB (ie treat as limit order)
@@ -334,8 +334,6 @@ class Exchange(Orderbook):
                 else:
                         return None
 
-
-
         def tape_dump(self, fname, fmode, tmode):
                 dumpfile = open(fname, fmode)
                 for tapeitem in self.tape:
@@ -344,7 +342,6 @@ class Exchange(Orderbook):
                 dumpfile.close()
                 if tmode == 'wipe':
                         self.tape = []
-
 
         # this returns the LOB data "published" by the exchange,
         # i.e., what is accessible to the traders
@@ -364,15 +361,15 @@ class Exchange(Orderbook):
                
                 # Some of this logic may have to be moved to the trader, as not necessarily 
                 # exchange logic
-                public_data['mid_price'] = 0
-                public_data['micro_price'] = 0
-                public_data['imbalances'] = 0
-                public_data['recent_transaction'] = 0
+                public_data['mid_price'] = 0.0
+                public_data['micro_price'] = 0.0
+                public_data['imbalances'] = 0.0
                 public_data['spread'] = 0
-                public_data['trade_time'] = 0
+                public_data['trade_time'] = 0.0
+                public_data['dt'] = 0.0
                 public_data['trade_price'] = 0 
 
-                
+
                 # Finds the most recent transaction price
                 if len(public_data['tape'] ) != 0: 
                     
@@ -390,13 +387,17 @@ class Exchange(Orderbook):
                         else:
                             buyer = trades[0]['party1']
                             seller = trades[0]['party2']
+                        if len(trades) > 1:           
+                                public_data['dt'] = trades[0]['time'] - trades[1]['time']
+                        else:
+                                public_data['dt'] = trades[0]['time']
 
                         public_data['trade_time'] = public_data['time']
                         public_data['trade_price'] = trades[0]['price']
                         
+                        
                        
                         
-
                         if (public_data['bids']['best'] == None):
                             x = 0
                         else:
@@ -412,10 +413,10 @@ class Exchange(Orderbook):
 
                         
                         public_data['spread'] = abs(y - x)
-                        public_data['mid_price'] = (x + y) / 2
+                        public_data['mid_price'] = float((x + y)) / 2
                         if (n_x + n_y != 0 ): 
-                            public_data['micro_price'] = ((n_x * y) + (n_y * x)) / (n_x + n_y)
-                            public_data['imbalances'] = (n_x - n_y) / (n_x + n_y)
+                            public_data['micro_price'] = float(((n_x * y) + (n_y * x))) / float((n_x + n_y))
+                            public_data['imbalances'] = float((n_x - n_y)) / float((n_x + n_y))
 
 
                 if verbose:
@@ -426,7 +427,6 @@ class Exchange(Orderbook):
                         # print('qid=%d' % self.quote_id)
 
                 return public_data
-
 
 
 ##################--Traders below here--#############
@@ -821,7 +821,7 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                 elif robottype == 'ZIP':
                         return Trader_ZIP('ZIP', name, 0.00, 0)
                 elif robottype == 'DTR':
-                    return DeepTrader('DTR', name, 0.00, 0, 'DeepTrader1_3')
+                    return DeepTrader('DTR', name, 0.00, 0, 'DeepTrader1_4')
                 elif robottype == 'AA':
                     return Trader_AA('AA', name, 0.00, 0)
                 elif robottype == 'GDX':
@@ -1082,8 +1082,8 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 
 # calculates the mid and micro price of the market after each time step
 def lob_data_out(exchange, time, data_file, traders, limits):
-    t = 0 
     lob = exchange.publish_lob(time, False, traders)
+    t = 0 
 
     if (lob['bids']['best'] == None):
         x = 0
@@ -1100,7 +1100,7 @@ def lob_data_out(exchange, time, data_file, traders, limits):
     if(time == lob["trade_time"] and time != 0):
         # try:
 
-        data_file.write("%f,%d,%d, %f,%f,%d,%d,%d,%d,%d\n" % (time,t, limits[t], lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x,y, lob['trade_price']))
+        data_file.write("%f,%d,%d,%f,%f,%f,%d,%d,%d,%f,%d\n" % (time, t, limits[t], lob['mid_price'], lob['micro_price'], lob['imbalances'], lob['spread'], x, y, lob['dt'], lob['trade_price']))
 
         
         # except :
@@ -1110,16 +1110,11 @@ def lob_data_out(exchange, time, data_file, traders, limits):
 
 # one session in the market
 def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dumpfile, dump_each_trade, verbose):
-
-
         # initialise the exchange
         exchange = Exchange()
-
-
-
         # create a bunch of traders
         traders = {}
-        trader_stats = populate_market(trader_spec, traders, True, verbose)
+        trader_stats = populate_market(trader_spec, traders, True, False)
         data_file = open("./Data/Training/" + sess_id + ".csv", "w+")
 
 
@@ -1176,12 +1171,12 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                         if order.otype == 'Ask': limits[1] = traders[tid].orders[0].price
                         # print limits
                         if order.otype == 'Ask' and order.price < traders[tid].orders[0].price:
-                                print order.price
-                                print traders[tid].orders[0].price
+                                # print order.price
+                                # print traders[tid].orders[0].price
                                 sys.exit('Bad ask')
                         if order.otype == 'Bid' and order.price > traders[tid].orders[0].price: 
-                                print order.price
-                                print traders[tid].orders[0].price
+                                # print order.price
+                                # print traders[tid].orders[0].price
                                 sys.exit('Bad bid')
 
                         # send order to exchange
@@ -1225,11 +1220,9 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
 if __name__ == "__main__":
 
 	# set up parameters for the session
-
 	start_time = 0.0
 	end_time = 600.0
 	duration = end_time - start_time
-
 
 	# schedule_offsetfn returns time-dependent offset on schedule prices
 	def schedule_offsetfn(t):
@@ -1241,18 +1234,13 @@ if __name__ == "__main__":
 			offset = gradient + amplitude * math.sin(wavelength * t)
 			return int(round(offset, 0))
 			
-			
+        w = random.randint(25, 225)
+        x = random.randint(w, 375)
 
-# #        range1 = (10, 190, schedule_offsetfn)
-# #        range2 = (200,300, schedule_offsetfn)
+        y = random.randint(50, 250)
+        z = random.randint(y, 400)
 
-# #        supply_schedule = [ {'from':start_time, 'to':duration/3, 'ranges':[range1], 'stepmode':'fixed'},
-# #                            {'from':duration/3, 'to':2*duration/3, 'ranges':[range2], 'stepmode':'fixed'},
-# #                            {'from':2*duration/3, 'to':end_time, 'ranges':[range1], 'stepmode':'fixed'}
-# #                          ]
-
-
-
+        print w, x, y, z
 	range1 = (95, 95, schedule_offsetfn)
 	supply_schedule = [ {'from':start_time, 'to':end_time, 'ranges':[range1], 'stepmode':'fixed'}
 						]
@@ -1264,10 +1252,10 @@ if __name__ == "__main__":
 	order_sched = {'sup':supply_schedule, 'dem':demand_schedule,
 					'interval':30, 'timemode':'drip-poisson'}
 
-	buyers_spec = [('DTR',10),('ZIC',10),('SNPR',10),('GVWY',10)]
-	sellers_spec = buyers_spec
-	traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
-# #
+# 	buyers_spec = [('DTR',10),('ZIC',10),('GVWY',10),('ZIP',10)]
+# 	sellers_spec = buyers_spec
+# 	traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
+# # # #
 # #        # run a sequence of trials, one session per trial
 # #
 	# n_trials = 1
@@ -1284,63 +1272,104 @@ if __name__ == "__main__":
 	# 		market_session(trial_id, start_time, end_time, traders_spec, order_sched, tdump, dump_all, True)
 	# 		tdump.flush()
 	# 		trial = trial + 1
-	# tdump.close()
+	# # tdump.close()
 
-	# sys.exit('Done Now')
+	# # sys.exit('Done Now')
+        # train_traders = ["SNPR","GDX","AA","GVWY", "ZIC","ZIP", "SHVR"]
+        # # all_traders = train_traders + ["DTR"]
 
-        ## run a single market session for "10 minutes"
-        # for i in range(10):
-        #         trial = i + 1
-        #         trial_id = 'trial%04d' % trial
-        #         tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
-        #         dump_all = False
-        #         market_session(trial_id, start_time, end_time,
-        #                 traders_spec, order_sched, tdump, dump_all, True)
-	# sys.exit('Done Now')
+        # combos = list(combinations(train_traders, 3))
+        # combos = [tuple(list(tup) +["DTR"])for tup in combos]
+        # # proportions = [[10, 10, 10, 10], [20, 10, 5, 5], [15, 10, 10, 5], [15, 15, 5, 5], [25, 5, 5, 5]]
+        # balanced = [[10, 10, 10, 10]]
+        # # perms = [ p for i in proportions for p in set(permutations(i))]
+        # # session_configs = [list(zip(p[0], p[1])) for p in list(product(combos, perms))]
+        # session_configs = [list(zip(p[0], p[1])) for p in list(product(combos, balanced))]
+        # # print len(session_configs)
+        # # trials_per_config = 10
+        # # trial = 0 
 
-	# run a sequence of trials that exhaustively varies the ratio of four trader types
-	# NB this has weakness of symmetric proportions on buyers/sellers -- combinatorics of varying that are quite nasty
+        # # class SlowBar(Bar):
+        # #         suffix='%(index)d/%(max)d, %(percent).1f%%, %(remaining_hours)d hours remaining'
+        # #         @property
+        # #         def remaining_hours(self):
+        # #                 return self.eta // 3600
+
+        # # # print(session_configs)
+        # # bar = SlowBar('BSE Simulations Progress', max=len(session_configs)*trials_per_config)
+        # # for config in session_configs:
+                
+        # #         buyers_spec = config
+        # #         sellers_spec = buyers_spec
+        # #         traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
+
+        # #         for i in range(trials_per_config):
+        # #                 trial += 1
+        # #                 trial_id = 'trial%07d' % trial
+        # #                 # tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
+        # #                 tdump  = ""
+        # #                 dump_all = False
+        # #                 market_session(trial_id, start_time, end_time, traders_spec, order_sched, tdump, dump_all, False)
+        # #                 bar.next()
+        # # bar.finish()
+        # # sys.exit('Done Now')
+                        
+
+        # # combinations = combinations(train_traders, 4)
+        # # print combinations
+        # ## run a single market session for "10 minutes"
+        # # for i in range(100):
+        # #         trial = i + 1
+        # #         trial_id = 'trial%04d' % trial
+        # #         tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
+        # #         dump_all = False
+        # #         market_session(trial_id, start_time, end_time,
+        # #                 traders_spec, order_sched, tdump, True, True)
+	# # sys.exit('Done Now')
+
+	# # run a sequence of trials that exhaustively varies the ratio of four trader types
+	# # NB this has weakness of symmetric proportions on buyers/sellers -- combinatorics of varying that are quite nasty
 	
 
-	# n_trader_types = 7
-	# equal_ratio_n = 4
-	# n_trials_per_ratio = 20
+	# # n_trader_types = 7
+	# # equal_ratio_n = 4
+	# # n_trials_per_ratio = 20
 
-	# n_traders = n_trader_types * equal_ratio_n
+	# # n_traders = n_trader_types * equal_ratio_n
 
-	# fname = 'balances_%03d.csv' % equal_ratio_n
+	# # fname = 'balances_%03d.csv' % equal_ratio_n
 
-	# tdump = open(fname, 'w')
+	# # tdump = open(fname, 'w')
 
-	# min_n = 1
+	# # min_n = 1
 
-	# trialnumber = 1
-	# trdr_1_n = min_n
-	# while trdr_1_n <= n_traders:
-	# 		trdr_2_n = min_n 
-	# 		while trdr_2_n <= n_traders - trdr_1_n:
-	# 				trdr_3_n = min_n
-	# 				while trdr_3_n <= n_traders - (trdr_1_n + trdr_2_n):
-	# 						trdr_4_n = n_traders - (trdr_1_n + trdr_2_n + trdr_3_n)
-	# 						if trdr_4_n >= min_n:
-	# 								buyers_spec = [('GVWY', trdr_1_n), ('SHVR', trdr_2_n),
-	# 												('ZIC', trdr_3_n), ('ZIP', trdr_4_n)]
-	# 								sellers_spec = buyers_spec
-	# 								traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
-	# 								# print buyers_spec
-	# 								trial = 1
-	# 								while trial <= n_trials_per_ratio:
-	# 										trial_id = 'trial%07d' % trialnumber
-	# 										market_session(trial_id, start_time, end_time, traders_spec,
-	# 														order_sched, tdump, False, True)
-	# 										# tdump.flush()
-	# 										trial = trial + 1
-	# 										trialnumber = trialnumber + 1
-	# 						trdr_3_n += 1
-	# 				trdr_2_n += 1
-	# 		trdr_1_n += 1
-	# tdump.close()
+	# # trialnumber = 1
+	# # trdr_1_n = min_n
+	# # while trdr_1_n <= n_traders:
+	# # 		trdr_2_n = min_n 
+	# # 		while trdr_2_n <= n_traders - trdr_1_n:
+	# # 				trdr_3_n = min_n
+	# # 				while trdr_3_n <= n_traders - (trdr_1_n + trdr_2_n):
+	# # 						trdr_4_n = n_traders - (trdr_1_n + trdr_2_n + trdr_3_n)
+	# # 						if trdr_4_n >= min_n:
+	# # 								buyers_spec = [('GVWY', trdr_1_n), ('SHVR', trdr_2_n),
+	# # 												('ZIC', trdr_3_n), ('ZIP', trdr_4_n)]
+	# # 								sellers_spec = buyers_spec
+	# # 								traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
+	# # 								# print buyers_spec
+	# # 								trial = 1
+	# # 								while trial <= n_trials_per_ratio:
+	# # 										trial_id = 'trial%07d' % trialnumber
+	# # 										market_session(trial_id, start_time, end_time, traders_spec,
+	# # 														order_sched, tdump, False, True)
+	# # 										# tdump.flush()
+	# # 										trial = trial + 1
+	# # 										trialnumber = trialnumber + 1
+	# # 						trdr_3_n += 1
+	# # 				trdr_2_n += 1
+	# # 		trdr_1_n += 1
+	# # tdump.close()
 	
-	print trialnumber
+	# # print trialnumber
 
 
