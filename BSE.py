@@ -555,9 +555,10 @@ class Exchange(Orderbook):
                         
                         tape = reversed(public_data['tape'])
                         trades = list(filter(lambda d: d['type'] == "Trade", tape))
+                        trade_prices = [t['price'] for t in trades]
                         weights = [pow(0.9, t) for t in range(len(trades))]
-                        p_estimate = np.ma.average(trades, weights=weights)
-                        public_data['smiths_alpha'] = np.sqrt( np.sum( np.square( trades - p_estimate) / len(trades) ))
+                        p_estimate = np.average(trade_prices, weights=weights)
+                        public_data['smiths_alpha'] = np.sqrt( np.sum( np.square( trade_prices - p_estimate) / len(trade_prices) ))
                         
                         if (public_data['time'] == trades[0]['time']):
                                 
@@ -1981,7 +1982,7 @@ def lob_data_out(exchange, time, data_file, traders, limits):
         # try:
 
         data_file.write("%f,%d,%d,%f,%f,%f,%d,%d,%d,%f,%d,%d,%f,%d\n" % (time, t, limits[t], lob['mid_price'], lob['micro_price'],
-            lob['imbalances'], lob['spread'], x, y, lob['dt'], lob['bids']['worst'], lob['bids']['worst'],lob['smiths_alpha'], lob['trade_price']))
+            lob['imbalances'], lob['spread'], x, y, lob['dt'], lob['bids']['worst'], lob['asks']['worst'],lob['smiths_alpha'], lob['trade_price']))
 
         
         # except :
