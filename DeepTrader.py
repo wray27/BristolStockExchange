@@ -131,7 +131,7 @@ class DeepTrader(Trader):
           
             # print(seld.tid, self.count)
            
-            order = Order(self.tid, otype, model_price ,
+            order = Order(self.tid, otype, model_price,
                             self.orders[0].qty, time, qid)
             self.lastquote = order
         return order

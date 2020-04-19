@@ -558,7 +558,7 @@ class Exchange(Orderbook):
                         trade_prices = [t['price'] for t in trades]
                         weights = [pow(0.9, t) for t in range(len(trades))]
                         p_estimate = np.average(trade_prices, weights=weights)
-                        public_data['smiths_alpha'] = np.sqrt( np.sum( np.square( trade_prices - p_estimate) / len(trade_prices) ))
+                        public_data['smiths_alpha'] = np.sqrt(np.sum(np.square(trade_prices-p_estimate)/len(trade_prices)))
                         
                         if (public_data['time'] == trades[0]['time']):
                                 
@@ -578,8 +578,6 @@ class Exchange(Orderbook):
                             public_data['trade_time'] = public_data['time']
                             public_data['trade_price'] = trades[0]['price']
                             
-                            
-                        
                             
                             if (public_data['bids']['best'] == None):
                                 x = 0
@@ -1981,8 +1979,8 @@ def lob_data_out(exchange, time, data_file, traders, limits):
     if(time == lob["trade_time"] and time != 0):
         # try:
 
-        data_file.write("%f,%d,%d,%f,%f,%f,%d,%d,%d,%f,%d,%d,%f,%d\n" % (time, t, limits[t], lob['mid_price'], lob['micro_price'],
-            lob['imbalances'], lob['spread'], x, y, lob['dt'], lob['bids']['worst'], lob['asks']['worst'],lob['smiths_alpha'], lob['trade_price']))
+        data_file.write("%f,%d,%d,%f,%f,%f,%d,%d,%d,%f,%d,%f,%d\n" % (time, t, limits[t], lob['mid_price'], lob['micro_price'],
+            lob['imbalances'], lob['spread'], x, y, lob['dt'], (lob['asks']['n']+ lob['bids']['n']),lob['smiths_alpha'], lob['trade_price']))
 
         
         # except :
@@ -2114,11 +2112,11 @@ if __name__ == "__main__":
 			offset = gradient + amplitude * math.sin(wavelength * t)
 			return int(round(offset, 0))
 			
-        w = random.randint(25, 225)
-        x = random.randint(w, 275)
+        w = random.randint(75, 100)
+        x = random.randint(w, 125)
 
-        y = random.randint(50, 250)
-        z = random.randint(y, 375)
+        y = random.randint(100, 125)
+        z = random.randint(y, 150)
 
         # print w, x, y, z
 	range1 = (w, x, schedule_offsetfn)
