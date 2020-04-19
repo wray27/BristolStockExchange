@@ -55,10 +55,10 @@ from snashall2019 import Trader_GDX
 from itertools import combinations, permutations, product
 
 
-# adds parent directory to the sys path variable to import DeepTrader
-currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-parentdir = os.path.dirname(currentdir)
-sys.path.insert(0,parentdir) 
+# # adds parent directory to the sys path variable to import DeepTrader
+# currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+# parentdir = os.path.dirname(currentdir)
+# sys.path.insert(0,parentdir) 
 from DeepTrader import DeepTrader
 from Trader import Trader
 
