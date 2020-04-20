@@ -51,13 +51,16 @@ class DeepTrader(Trader):
         spread = 0
         delta_t = 0
         weighted_moving_average = 0
+        smiths_alpha = 0
 
         if len(tape) != 0:
 
             tape = reversed(tape)
             trades = list(filter(lambda d: d['type'] == "Trade", tape))
             trade_prices = [t['price'] for t in trades]
-            delta_t = time - trades[0]['time']
+            weights = [pow(0.9, t) for t in range(len(trades))]
+            p_estimate = np.average(trade_prices, weights=weights)
+            smiths_alpha = np.sqrt(np.sum(np.square(trade_prices-p_estimate)/len(trade_prices)))
 
             if (time == trades[0]['time']):
                
@@ -82,6 +85,7 @@ class DeepTrader(Trader):
         
         n_x = bids['n']
         n_y = asks['n']
+        total = n_x + n_y
 
         spread = abs(y - x)
         mid_price = (x + y) / 2
@@ -89,7 +93,7 @@ class DeepTrader(Trader):
             micro_price = ((n_x * y) + (n_y * x)) / (n_x + n_y)
             imbalances = (n_x - n_y) / (n_x + n_y)
     
-        market_conditions = np.array([time, val, limit, mid_price, micro_price, imbalances, spread, n_x, n_y])
+        market_conditions = np.array([time, val, limit, mid_price, micro_price, imbalances, spread, x, y, delta_t, total, smiths_alpha])
 
         return market_conditions
    
