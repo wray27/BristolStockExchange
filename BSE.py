@@ -1205,7 +1205,7 @@ class DeepTrader(Trader):
         self.lastquote = None   # record of what its last quote was
         self.filename = filename
         self.model = nn.load_network(self.filename)
-        self.n_features = 9
+        self.n_features = 12
         self.max_vals, self.min_vals = nn.normalization_values(self.filename)
         self.count = [0, 0]
 
@@ -1295,7 +1295,7 @@ class DeepTrader(Trader):
             normalized_input = (x-self.min_vals[:self.n_features]) / (
                 self.max_vals[:self.n_features]-self.min_vals[:self.n_features])
             normalized_input = np.reshape(
-                normalized_input, (1, 1, self.n_features))
+                normalized_input, (1, -1, 1))
             # print normalized_input
 
             # dealing witht the networks output
@@ -1319,7 +1319,6 @@ class DeepTrader(Trader):
                           self.orders[0].qty, time, qid)
             self.lastquote = order
         return order
-
 
 # Trader subclass Giveaway
 # even dumber than a ZI-U: just give the deal away
@@ -2181,7 +2180,7 @@ if __name__ == "__main__":
             proportions = [[10, 10, 10, 10], [20, 10, 5, 5], [
                 15, 10, 10, 5], [15, 15, 5, 5], [25, 5, 5, 5]]
             perms = [p for i in proportions for p in set(permutations(i))]
-            combos = [ tuple(list(c) + "DTR") for c in combos]
+            combos = [ tuple(list(c) + ["DTR"]) for c in combos]
             session_configs = [list(zip(p[0], p[1]))
                                for p in list(product(combos, perms))]
 
@@ -2198,7 +2197,7 @@ if __name__ == "__main__":
                 for i in range(trials_per_config):
                     trial += 1
                     trial_id = 'trial%07d' % trial
-                    tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
+                    tdump = open('avg_balance%04d.csv' % trial,'w+')
                     dump_all = True
                     lob_out = False
                     market_session(trial_id, start_time, end_time,
