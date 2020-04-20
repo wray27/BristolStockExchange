@@ -49,7 +49,6 @@ from __future__ import division
 import os,sys,inspect
 import math
 import random
-# from progress.bar import IncrementalBar as Bar
 from itertools import combinations, permutations, product
 import numpy as np
 
@@ -1187,6 +1186,7 @@ class Trader_AA(Trader):
             self.calcTarget()
             # print 'sell: ', self.sell_target, 'buy: ', self.buy_target, 'limit:', self.limit, 'eq: ',  self.estimated_equilibrium[-1], 'sell_r: ', self.sell_r, 'buy_r: ', self.buy_r, '\n'
 
+
 class DeepTrader(Trader):
 
     def __init__(self, ttype, tid, balance, time, filename):
@@ -1228,13 +1228,17 @@ class DeepTrader(Trader):
         spread = 0
         delta_t = 0
         weighted_moving_average = 0
+        smiths_alpha = 0
 
         if len(tape) != 0:
 
             tape = reversed(tape)
             trades = list(filter(lambda d: d['type'] == "Trade", tape))
             trade_prices = [t['price'] for t in trades]
-            delta_t = time - trades[0]['time']
+            weights = [pow(0.9, t) for t in range(len(trades))]
+            p_estimate = np.average(trade_prices, weights=weights)
+            smiths_alpha = np.sqrt(
+                np.sum(np.square(trade_prices-p_estimate)/len(trade_prices)))
 
             if (time == trades[0]['time']):
 
@@ -1259,6 +1263,7 @@ class DeepTrader(Trader):
 
         n_x = bids['n']
         n_y = asks['n']
+        total = n_x + n_y
 
         spread = abs(y - x)
         mid_price = (x + y) / 2
@@ -1267,7 +1272,7 @@ class DeepTrader(Trader):
             imbalances = (n_x - n_y) / (n_x + n_y)
 
         market_conditions = np.array(
-            [time, val, limit, mid_price, micro_price, imbalances, spread, n_x, n_y])
+            [time, val, limit, mid_price, micro_price, imbalances, spread, x, y, delta_t, total, smiths_alpha])
 
         return market_conditions
 
@@ -1314,6 +1319,7 @@ class DeepTrader(Trader):
                           self.orders[0].qty, time, qid)
             self.lastquote = order
         return order
+
 
 # Trader subclass Giveaway
 # even dumber than a ZI-U: just give the deal away
@@ -1701,7 +1707,7 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                 elif robottype == 'ZIP':
                         return Trader_ZIP('ZIP', name, 0.00, 0)
                 elif robottype == 'DTR':
-                    return DeepTrader('DTR', name, 0.00, 0, 'DeepTrader1_4')
+                    return DeepTrader('DTR', name, 0.00, 0, 'DeepTrader1_5')
                 elif robottype == 'AA':
                     return Trader_AA('AA', name, 0.00, 0)
                 elif robottype == 'GDX':
@@ -1989,13 +1995,13 @@ def lob_data_out(exchange, time, data_file, traders, limits):
         #     print limits 
 
 # one session in the market
-def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dumpfile, dump_each_trade, verbose):
+def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dumpfile, dump_each_trade, verbose, lob_out=True):
         # initialise the exchange
         exchange = Exchange()
         # create a bunch of traders
         traders = {}
         trader_stats = populate_market(trader_spec, traders, True, False)
-        data_file = open(sess_id + ".csv", "w+")
+        if lob_out: data_file = open(sess_id + ".csv", "w+")
 
 
         # timestep set so that can process all traders in one second
@@ -2068,7 +2074,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
                                 traders[trade['party1']].bookkeep(trade, order, bookkeep_verbose, time)
                                 traders[trade['party2']].bookkeep(trade, order, bookkeep_verbose, time)
                                 if dump_each_trade: trade_stats(sess_id, traders, tdump, time, exchange.publish_lob(time, lob_verbose, traders))
-                                lob_data_out(exchange, time, data_file, traders, limits)
+                                if lob_out: lob_data_out(exchange, time, data_file, traders, limits)
                         
                         # traders respond to whatever happened
                         lob = exchange.publish_lob(time, lob_verbose , traders)
@@ -2084,7 +2090,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, dum
 
         # end of an experiment -- dump the tape
         # exchange.tape_dump('transactions.csv', 'w', 'keep')
-        data_file.close()
+        if lob_out: data_file.close()
 
 
         # write trade_stats for this experiment NB end-of-session summary only
@@ -2158,7 +2164,42 @@ if __name__ == "__main__":
                 for i in range(trials_per_config):
                     trial += 1
                     trial_id = 'trial%07d' % trial
-                    # tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
-                    tdump  = ""
+                    tdump = ""
                     dump_all = False
                     market_session(trial_id, start_time, end_time, traders_spec, order_sched, tdump, dump_all, False)
+        
+        else:
+
+            import tensorflow as tf
+            from keras.models import Sequential
+            from keras.layers import LSTM
+            from keras.layers import Dense
+            from keras.optimizers import Adam
+            from NeuralNetwork import NeuralNetwork as nn
+
+            combos = list(combinations(train_traders, 3))
+            proportions = [[10, 10, 10, 10], [20, 10, 5, 5], [
+                15, 10, 10, 5], [15, 15, 5, 5], [25, 5, 5, 5]]
+            perms = [p for i in proportions for p in set(permutations(i))]
+            combos = [ tuple(list(c) + "DTR") for c in combos]
+            session_configs = [list(zip(p[0], p[1]))
+                               for p in list(product(combos, perms))]
+
+            session_configs = session_configs[:100]
+            trials_per_config = 1
+            trial = 0
+
+            for config in session_configs:
+
+                buyers_spec = config
+                sellers_spec = buyers_spec
+                traders_spec = {'sellers': sellers_spec, 'buyers': buyers_spec}
+
+                for i in range(trials_per_config):
+                    trial += 1
+                    trial_id = 'trial%07d' % trial
+                    tdump = open('./Data/Results/avg_balance%04d.csv' % trial,'w')
+                    dump_all = True
+                    lob_out = False
+                    market_session(trial_id, start_time, end_time,
+                                   traders_spec, order_sched, tdump, dump_all, False, lob_out)
